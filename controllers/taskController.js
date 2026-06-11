@@ -1,107 +1,71 @@
 const Task = require("../models/Task");
+const AppError = require("../utils/AppError");
+const asyncHandler = require("../utils/asyncHandler");
 
-// GET all tasks
-const getAllTasks = async (req, res, next) => {
-  try {
-    const tasks = await Task.find();
-    res.status(200).json(tasks);
-  } catch (error) {
-    next(error);
+const getAllTasks = asyncHandler(async (req, res) => {
+  const tasks = await Task.find();
+  res.status(200).json({ success: true, count: tasks.length, data: tasks });
+});
+
+const getTaskById = asyncHandler(async (req, res, next) => {
+  const task = await Task.findById(req.params.id);
+  if (!task)
+    return next(new AppError(`Task with id ${req.params.id} not found`, 404));
+  res.status(200).json({ success: true, data: task });
+});
+
+const createTask = asyncHandler(async (req, res, next) => {
+  const { title, completed } = req.body;
+
+  if (!title || title.trim() === "") {
+    return next(new AppError("Title is required and cannot be empty", 400));
   }
-};
-
-// GET single task by ID
-const getTaskById = async (req, res, next) => {
-  try {
-    const task = await Task.findById(req.params.id);
-
-    if (!task) {
-      return res
-        .status(404)
-        .json({ error: `Task with id ${req.params.id} not found` });
-    }
-
-    res.status(200).json(task);
-  } catch (error) {
-    if (error.name === "CastError") {
-      return res.status(400).json({ error: "Invalid ID format" });
-    }
-    next(error);
-  }
-};
-
-// POST create a new task
-const createTask = async (req, res, next) => {
-  try {
-    const { title } = req.body;
-
-    if (!title || title.trim() === "") {
-      return res
-        .status(400)
-        .json({ error: "Title is required and cannot be empty" });
-    }
-
-    const task = await Task.create({ title });
-    res.status(201).json(task);
-  } catch (error) {
-    if (error.name === "ValidationError") {
-      return res.status(400).json({ error: error.message });
-    }
-    next(error);
-  }
-};
-
-// PUT update a task
-const updateTask = async (req, res, next) => {
-  try {
-    const { title, completed } = req.body;
-
-    if (completed !== undefined && typeof completed !== "boolean") {
-      return res
-        .status(400)
-        .json({ error: "Completed must be a boolean (true or false)" });
-    }
-
-    const task = await Task.findByIdAndUpdate(
-      req.params.id,
-      { title, completed },
-      { new: true, runValidators: true },
+  if (completed !== undefined && typeof completed !== "boolean") {
+    return next(
+      new AppError("Completed must be a boolean (true or false)", 400),
     );
-
-    if (!task) {
-      return res
-        .status(404)
-        .json({ error: `Task with id ${req.params.id} not found` });
-    }
-
-    res.status(200).json(task);
-  } catch (error) {
-    if (error.name === "CastError") {
-      return res.status(400).json({ error: "Invalid ID format" });
-    }
-    next(error);
   }
-};
 
-// DELETE a task
-const deleteTask = async (req, res, next) => {
-  try {
-    const task = await Task.findByIdAndDelete(req.params.id);
+  const taskData = { title };
+  if (completed !== undefined) taskData.completed = completed;
 
-    if (!task) {
-      return res
-        .status(404)
-        .json({ error: `Task with id ${req.params.id} not found` });
-    }
+  const task = await Task.create(taskData);
+  res.status(201).json({ success: true, data: task });
+});
 
-    res.status(200).json({ message: "Task deleted successfully" });
-  } catch (error) {
-    if (error.name === "CastError") {
-      return res.status(400).json({ error: "Invalid ID format" });
-    }
-    next(error);
+const updateTask = asyncHandler(async (req, res, next) => {
+  const { title, completed } = req.body;
+
+  if (completed !== undefined && typeof completed !== "boolean") {
+    return next(
+      new AppError("Completed must be a boolean (true or false)", 400),
+    );
   }
-};
+
+  const updates = {};
+  if (title !== undefined) updates.title = title;
+  if (completed !== undefined) updates.completed = completed;
+
+  if (Object.keys(updates).length === 0) {
+    return next(new AppError("No valid fields provided to update", 400));
+  }
+
+  const task = await Task.findByIdAndUpdate(req.params.id, updates, {
+    new: true,
+    runValidators: true,
+  });
+
+  if (!task)
+    return next(new AppError(`Task with id ${req.params.id} not found`, 404));
+  res.status(200).json({ success: true, data: task });
+});
+
+const deleteTask = asyncHandler(async (req, res, next) => {
+  const task = await Task.findByIdAndDelete(req.params.id);
+  if (!task)
+    return next(new AppError(`Task with id ${req.params.id} not found`, 404));
+  res.status(200).json({ success: true, message: "Task deleted successfully" });
+});
 
 module.exports = {
   getAllTasks,

@@ -1,6 +1,7 @@
 const User = require("../models/User");
 const jwt = require("jsonwebtoken");
-
+const AppError = require("../utils/AppError");
+const asyncHandler = require("../utils/asyncHandler");
 
 const generateToken = (id, role) => {
   return jwt.sign({ id, role }, process.env.JWT_SECRET, {
@@ -8,73 +9,46 @@ const generateToken = (id, role) => {
   });
 };
 
+const register = asyncHandler(async (req, res, next) => {
+  const { name, email, password, role } = req.body;
 
-const register = async (req, res, next) => {
-  try {
-    const { name, email, password, role } = req.body;
-
-    if (!name || !email || !password) {
-      return res
-        .status(400)
-        .json({ error: "Name, email and password are required" });
-    }
-
-    const userExists = await User.findOne({ email });
-    if (userExists) {
-      return res
-        .status(400)
-        .json({ error: "User with that email already exists" });
-    }
-
-    const user = await User.create({ name, email, password, role });
-
-    res.status(201).json({
-      message: "User registered successfully",
-      token: generateToken(user._id, user.role),
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-      },
-    });
-  } catch (error) {
-    next(error);
+  if (!name || !email || !password) {
+    return next(new AppError("Name, email and password are required", 400));
   }
-};
 
-
-const login = async (req, res, next) => {
-  try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ error: "Email and password are required" });
-    }
-
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(401).json({ error: "Invalid email or password" });
-    }
-
-    const isMatch = await user.matchPassword(password);
-    if (!isMatch) {
-      return res.status(401).json({ error: "Invalid email or password" });
-    }
-
-    res.status(200).json({
-      message: "Login successful",
-      token: generateToken(user._id, user.role),
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-      },
-    });
-  } catch (error) {
-    next(error);
+  const userExists = await User.findOne({ email });
+  if (userExists) {
+    return next(new AppError("A user with that email already exists", 409));
   }
-};
+
+  const user = await User.create({ name, email, password, role });
+
+  res.status(201).json({
+    success: true,
+    message: "User registered successfully",
+    token: generateToken(user._id, user.role),
+    data: { id: user._id, name: user.name, email: user.email, role: user.role },
+  });
+});
+
+const login = asyncHandler(async (req, res, next) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return next(new AppError("Email and password are required", 400));
+  }
+
+  const user = await User.findOne({ email });
+  if (!user || !(await user.matchPassword(password))) {
+    return next(new AppError("Invalid email or password", 401));
+  }
+
+  res.status(200).json({
+    success: true,
+    message: "Login successful",
+    token: generateToken(user._id, user.role),
+    data: { id: user._id, name: user.name, email: user.email, role: user.role },
+  });
+});
 
 module.exports = { register, login };
