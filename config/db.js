@@ -1,13 +1,12 @@
 const mongoose = require("mongoose");
-const dns = require("node:dns");
+const dns = require("dns");
 
-dns.setDefaultResultOrder("ipv4first");
 dns.setServers(process.env.DNS_SERVERS.split(","));
 
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGO_URI);
-    console.log(`MongoDB connected: ${conn.connection.host}`);
+    const connect = await mongoose.connect(process.env.DB_URI);
+    console.log(`MongoDB connected: ${connect.connection.host}`);
   } catch (error) {
     console.error(`Database connection error: ${error.message}`);
     process.exit(1);
@@ -15,7 +14,7 @@ const connectDB = async () => {
 };
 
 mongoose.connection.on("disconnected", () => {
-  console.log("MongoDB disconnected");
+  console.log("MongoDB disconnected!");
 });
 
 mongoose.connection.on("error", (err) => {

@@ -1,7 +1,8 @@
 const notFound = (req, res, next) => {
-  const err = new Error(`Route ${req.method} ${req.path} not found`);
-  err.status = 404;
-  next(err);
+  res.status(404).json({
+    status: "error",
+    message: `Route ${req.method} ${req.originalUrl} not found`,
+  });
 };
 
 module.exports = notFound;

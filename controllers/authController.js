@@ -1,54 +1,87 @@
-const User = require("../models/User");
-const jwt = require("jsonwebtoken");
-const AppError = require("../utils/AppError");
-const asyncHandler = require("../utils/asyncHandler");
+const User = require("../models/userModel");
+const { generateToken } = require("../utils/tokenUtils");
 
-const generateToken = (id, role) => {
-  return jwt.sign({ id, role }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || "1h",
-  });
+const isNonEmptyString = (value) => typeof value === "string" && value.trim().length > 0;
+const isValidEmail = (value) => /^\S+@\S+\.\S+$/.test(value);
+
+const register = async (req, res, next) => {
+  try {
+    const { name, email, password } = req.body;
+
+    if (!isNonEmptyString(name)) {
+      return res.status(400).json({ status: "error", message: "Name is required" });
+    }
+
+    if (!isNonEmptyString(email) || !isValidEmail(email)) {
+      return res.status(400).json({ status: "error", message: "A valid email address is required" });
+    }
+
+    if (!isNonEmptyString(password)) {
+      return res.status(400).json({ status: "error", message: "Password is required" });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ status: "error", message: "Password must be at least 6 characters" });
+    }
+
+    const userExists = await User.findOne({ email }).lean();
+    if (userExists) {
+      return res.status(409).json({ status: "error", message: "A user with that email already exists" });
+    }
+
+    const user = await User.create({ name, email, password });
+
+    res.status(201).json({
+      status: "success",
+      data: {
+        token: generateToken(user._id, user.role),
+        user: { id: user._id, name: user.name, email: user.email, role: user.role },
+      },
+    });
+  } catch (error) {
+    if (error.name === "ValidationError") {
+      return res.status(400).json({ status: "error", message: error.message });
+    }
+    next(error);
+  }
 };
 
-const register = asyncHandler(async (req, res, next) => {
-  const { name, email, password, role } = req.body;
+const login = async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
 
-  if (!name || !email || !password) {
-    return next(new AppError("Name, email and password are required", 400));
+    if (!isNonEmptyString(email) || !isValidEmail(email)) {
+      return res.status(400).json({ status: "error", message: "A valid email address is required" });
+    }
+
+    if (!isNonEmptyString(password)) {
+      return res.status(400).json({ status: "error", message: "Password is required" });
+    }
+
+    const user = await User.findOne({ email }).select("+password");
+    if (!user || !(await user.matchPassword(password))) {
+      return res.status(401).json({ status: "error", message: "Invalid email or password" });
+    }
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        token: generateToken(user._id, user.role),
+        user: { id: user._id, name: user.name, email: user.email, role: user.role },
+      },
+    });
+  } catch (error) {
+    next(error);
   }
+};
 
-  const userExists = await User.findOne({ email });
-  if (userExists) {
-    return next(new AppError("A user with that email already exists", 409));
+const getUsers = async (req, res, next) => {
+  try {
+    const users = await User.find().lean();
+    res.status(200).json({ status: "success", data: users });
+  } catch (error) {
+    next(error);
   }
+};
 
-  const user = await User.create({ name, email, password, role });
-
-  res.status(201).json({
-    success: true,
-    message: "User registered successfully",
-    token: generateToken(user._id, user.role),
-    data: { id: user._id, name: user.name, email: user.email, role: user.role },
-  });
-});
-
-const login = asyncHandler(async (req, res, next) => {
-  const { email, password } = req.body;
-
-  if (!email || !password) {
-    return next(new AppError("Email and password are required", 400));
-  }
-
-  const user = await User.findOne({ email });
-  if (!user || !(await user.matchPassword(password))) {
-    return next(new AppError("Invalid email or password", 401));
-  }
-
-  res.status(200).json({
-    success: true,
-    message: "Login successful",
-    token: generateToken(user._id, user.role),
-    data: { id: user._id, name: user.name, email: user.email, role: user.role },
-  });
-});
-
-module.exports = { register, login };
+module.exports = { register, login, getUsers };
